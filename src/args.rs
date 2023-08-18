@@ -10,7 +10,7 @@ pub struct LodestoneArgs {
 
 #[derive(Subcommand, Clone)]
 pub enum LodestoneSubcommand {
-    /// Launch a server for clients to connec to
+    /// Launch a server for clients to connect to
     Server,
     /// Launch the client to connect to an existing server
     Client(ClientCommand),
