@@ -136,13 +136,19 @@ async fn read_signal(stream: &mut TcpStream) -> Option<ClientSignal> {
     let signal_size = stream.read_u64().await.ok()?;
 
     println!("CLIENT HANDLER: Received signal of size {}", signal_size);
-    let mut signal_body_buffer = vec![0; signal_size as usize];
-    let read_result = stream.read_exact(&mut signal_body_buffer).await;
+    if signal_size < 600 {
+        let mut signal_body_buffer = vec![0; signal_size as usize];
+        let read_result = stream.read_exact(&mut signal_body_buffer).await;
 
-    match read_result {
-        // If the bytes have been read, this indicates that the user has sent a signal.
-        Ok(_) => Some(serde_json::from_slice(&signal_body_buffer).unwrap()),
-        // If an error has been returned, this indicates that the user has disconnected.
-        Err(_) => None,
+        match read_result {
+            // If the bytes have been read, this indicates that the user has sent a signal.
+            Ok(_) => Some(serde_json::from_slice(&signal_body_buffer).unwrap()),
+            // If an error has been returned, this indicates that the user has disconnected.
+            Err(_) => None,
+        }
+    } else {
+        // TODO: Drain the stream of the signal body
+        println!("CLIENT HANDLER: Ignored signal of size {}", signal_size);
+        None
     }
 }

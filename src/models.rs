@@ -5,8 +5,7 @@ use tokio::io::AsyncWriteExt;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EncapsulatedSignal {
-    pub size: u64,
-    pub signal_body: Vec<u8>,
+    signal_body: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,25 +29,26 @@ impl ClientSignal {
 impl EncapsulatedSignal {
     pub fn client(signal: ClientSignal) -> Self {
         let signal_body = serde_json::to_vec(&signal).unwrap();
-        let size = signal_body.len() as u64;
-        Self { size, signal_body }
+        Self { signal_body }
     }
 
     pub fn server(signal: ServerSignal) -> Self {
         let signal_body = serde_json::to_vec(&signal).unwrap();
-        let size = signal_body.len() as u64;
-        Self { size, signal_body }
+        Self { signal_body }
     }
 
-    pub fn client_send(&self, stream: &mut std::net::TcpStream) -> std::io::Result<()> {
-        println!("CLIENT: Sending signal of size {}", self.size);
-        stream.write_all(&self.size.to_be_bytes())?;
+    pub fn client_send(self, stream: &mut std::net::TcpStream) -> std::io::Result<()> {
+        let size = self.signal_body.len();
+        println!("CLIENT: Sending signal of size {}", size);
+        stream.write_all(&size.to_be_bytes())?;
         stream.write_all(&self.signal_body)?;
         Ok(())
     }
 
     pub async fn server_send(&self, stream: &mut tokio::net::TcpStream) -> tokio::io::Result<()> {
-        stream.write_all(&self.size.to_be_bytes()).await?;
+        let size = self.signal_body.len();
+        println!("SERVER: Sending signal of size {}", size);
+        stream.write_all(&size.to_be_bytes()).await?;
         stream.write_all(&self.signal_body).await?;
         Ok(())
     }

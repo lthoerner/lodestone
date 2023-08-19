@@ -14,7 +14,9 @@ async fn main() {
     match args.subcommand {
         LodestoneSubcommand::Server => server::init().await.unwrap(),
         LodestoneSubcommand::Client(ClientCommand { username }) => {
-            Client::new(username).connect().unwrap()
+            let mut client = Client::new(username);
+            client.connect().unwrap();
+            client.send_message("Test".to_owned()).unwrap()
         }
     }
 }
