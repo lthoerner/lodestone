@@ -1,8 +1,8 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use tokio::io::AsyncReadExt;
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::select;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 
@@ -80,15 +80,17 @@ async fn run_broadcast_task(
 }
 
 async fn handle_user_connection(
-    mut stream: TcpStream,
+    stream: TcpStream,
     address: SocketAddr,
-    mut broadcast_receiver: broadcast::Receiver<Message>,
+    broadcast_receiver: broadcast::Receiver<Message>,
     signal_sender: mpsc::Sender<ClientSignal>,
 ) -> tokio::io::Result<()> {
     println!("CLIENT HANDLER: Received user connection from {}", address);
 
+    let (mut stream_reader, _stream_writer) = stream.into_split();
+
     // The first signal must be a LogIn signal.
-    let Some(ClientSignal::LogIn(username)) = read_signal(&mut stream).await else {
+    let Some(ClientSignal::LogIn(username)) = read_signal(&mut stream_reader).await else {
         // TODO: Move this to broadcast task
         println!(
             "CLIENT HANDLER: User {} attempted to send a signal without first sending a LogIn signal, disconnecting.",
@@ -106,23 +108,8 @@ async fn handle_user_connection(
         .unwrap();
 
     // Listen for signals from the user and broadcasts from the server.
-    loop {
-        select! {
-            Some(signal) = read_signal(&mut stream) => {
-                match &signal {
-                    // TODO: Error if user is not logged on with this name
-                    ClientSignal::LogOut(_) => {
-                        signal_sender.send(signal).await.unwrap();
-                        break;
-                    }
-                    _ => signal_sender.send(signal).await.unwrap(),
-                }
-            }
-            Ok(_) = broadcast_receiver.recv() => {
-                println!("CLIENT HANDLER: Broadcasting message to user {}", username);
-            }
-        }
-    }
+    tokio::spawn(read_broadcasts(username.clone(), broadcast_receiver));
+    read_signals(stream_reader, signal_sender).await;
 
     println!(
         "CLIENT HANDLER: User {} disconnected from {}",
@@ -131,24 +118,36 @@ async fn handle_user_connection(
     Ok(())
 }
 
-async fn read_signal(stream: &mut TcpStream) -> Option<ClientSignal> {
+async fn read_broadcasts(username: String, mut broadcast_receiver: broadcast::Receiver<Message>) {
+    while let Ok(_message) = broadcast_receiver.recv().await {
+        println!("CLIENT HANDLER: Broadcasting message to user {}", username);
+    }
+}
+
+async fn read_signals(mut stream: OwnedReadHalf, signal_sender: mpsc::Sender<ClientSignal>) {
+    while let Some(signal) = read_signal(&mut stream).await {
+        match &signal {
+            // TODO: Error if user is not logged on with this name
+            ClientSignal::LogOut(_) => {
+                signal_sender.send(signal).await.unwrap();
+                break;
+            }
+            _ => signal_sender.send(signal).await.unwrap(),
+        }
+    }
+}
+
+async fn read_signal(stream: &mut OwnedReadHalf) -> Option<ClientSignal> {
     // If this fails, it means the user has hung up on the connection.
     let signal_size = stream.read_u64().await.ok()?;
-
     println!("CLIENT HANDLER: Received signal of size {}", signal_size);
-    if signal_size < 600 {
-        let mut signal_body_buffer = vec![0; signal_size as usize];
-        let read_result = stream.read_exact(&mut signal_body_buffer).await;
+    let mut signal_body_buffer = vec![0; signal_size as usize];
+    let read_result = stream.read_exact(&mut signal_body_buffer).await;
 
-        match read_result {
-            // If the bytes have been read, this indicates that the user has sent a signal.
-            Ok(_) => Some(serde_json::from_slice(&signal_body_buffer).unwrap()),
-            // If an error has been returned, this indicates that the user has disconnected.
-            Err(_) => None,
-        }
-    } else {
-        // TODO: Drain the stream of the signal body
-        println!("CLIENT HANDLER: Ignored signal of size {}", signal_size);
-        None
+    match read_result {
+        // If the bytes have been read, this indicates that the user has sent a signal.
+        Ok(_) => Some(serde_json::from_slice(&signal_body_buffer).unwrap()),
+        // If an error has been returned, this indicates that the user has disconnected.
+        Err(_) => None,
     }
 }

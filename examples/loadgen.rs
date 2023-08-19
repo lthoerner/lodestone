@@ -5,10 +5,10 @@ use tokio::time::sleep;
 
 use lodestone::client::Client;
 
-const NUM_CLIENTS: usize = 10;
-const NUM_MESSAGES: usize = 10;
+const NUM_CLIENTS: usize = 500;
+const NUM_MESSAGES: usize = 100;
 const MESSAGE_MIN_SIZE: usize = 100;
-const MESSAGE_MAX_SIZE: usize = 500;
+const MESSAGE_MAX_SIZE: usize = 2500;
 
 #[tokio::main]
 async fn main() {
@@ -28,18 +28,14 @@ async fn spawn_client() {
     client.connect().unwrap();
 
     for _ in 0..NUM_MESSAGES {
-        // client
-        //     .send_message(generate_random_string(StringSize::Range(
-        //         MESSAGE_MIN_SIZE,
-        //         MESSAGE_MAX_SIZE,
-        //     )))
-        //     .unwrap();
-
         client
-            .send_message(generate_random_string(StringSize::Exact(500)))
+            .send_message(generate_random_string(StringSize::Range(
+                MESSAGE_MIN_SIZE,
+                MESSAGE_MAX_SIZE,
+            )))
             .unwrap();
 
-        sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(100)).await;
     }
 
     client.disconnect().unwrap();
