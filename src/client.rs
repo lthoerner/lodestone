@@ -1,21 +1,53 @@
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-use std::time::Duration;
 
 use crate::models::{ClientSignal, EncapsulatedSignal};
 
-pub fn init(username: String) -> std::io::Result<()> {
-    let mut stream = TcpStream::connect(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5555))?;
+pub struct Client {
+    pub username: String,
+    stream: Option<TcpStream>,
+}
 
-    send_signal(&mut stream, ClientSignal::LogOn(username.clone()))?;
-    std::thread::sleep(Duration::from_millis(5));
-    send_signal(
-        &mut stream,
-        ClientSignal::SendMessage("Hello, world!".to_owned()),
-    )?;
-    std::thread::sleep(Duration::from_millis(5));
-    send_signal(&mut stream, ClientSignal::LogOut(username))?;
+impl Client {
+    pub fn new(username: String) -> Self {
+        Self {
+            username: username.to_owned(),
+            stream: None,
+        }
+    }
 
-    Ok(())
+    pub fn connect(&mut self) -> std::io::Result<()> {
+        let stream = TcpStream::connect(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5555)).unwrap();
+        self.stream = Some(stream);
+        self.log_in()
+    }
+
+    pub fn disconnect(mut self) -> std::io::Result<()> {
+        self.log_out()
+    }
+
+    fn log_in(&mut self) -> std::io::Result<()> {
+        if let Some(stream) = &mut self.stream {
+            send_signal(stream, ClientSignal::LogIn(self.username.clone()))?;
+        }
+
+        Ok(())
+    }
+
+    fn log_out(&mut self) -> std::io::Result<()> {
+        if let Some(stream) = &mut self.stream {
+            send_signal(stream, ClientSignal::LogOut(self.username.clone()))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn send_message(&mut self, content: String) -> std::io::Result<()> {
+        if let Some(stream) = &mut self.stream {
+            send_signal(stream, ClientSignal::message(&self.username, content))?;
+        }
+
+        Ok(())
+    }
 }
 
 fn send_signal(stream: &mut TcpStream, signal: ClientSignal) -> std::io::Result<()> {

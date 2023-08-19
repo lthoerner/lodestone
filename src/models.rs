@@ -11,14 +11,20 @@ pub struct EncapsulatedSignal {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientSignal {
-    LogOn(String),
+    LogIn(String),
     LogOut(String),
-    SendMessage(String),
+    SendMessage(Message),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerSignal {
     PropagateMessage(String),
+}
+
+impl ClientSignal {
+    pub fn message(sender: &str, content: String) -> Self {
+        Self::SendMessage(Message::new(User::new(sender.to_owned()), content))
+    }
 }
 
 impl EncapsulatedSignal {
@@ -35,6 +41,7 @@ impl EncapsulatedSignal {
     }
 
     pub fn client_send(&self, stream: &mut std::net::TcpStream) -> std::io::Result<()> {
+        println!("CLIENT: Sending signal of size {}", self.size);
         stream.write_all(&self.size.to_be_bytes())?;
         stream.write_all(&self.signal_body)?;
         Ok(())
@@ -47,29 +54,25 @@ impl EncapsulatedSignal {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Message {
     pub author: User,
     pub content: String,
 }
 
-pub struct User {
-    pub name: String,
-    // pub status: Status,
+impl Message {
+    pub fn new(author: User, content: String) -> Self {
+        Self { author, content }
+    }
 }
 
-// #[derive(Default)]
-// pub enum Status {
-//     Online,
-//     DoNotDisturb,
-//     Idle,
-//     #[default]
-//     Away,
-// }
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct User {
+    pub name: String,
+}
 
-#[derive(Default)]
-pub enum Role {
-    Admin,
-    Moderator,
-    #[default]
-    Member,
+impl User {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
 }
